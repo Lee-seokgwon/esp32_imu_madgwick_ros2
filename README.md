@@ -1,14 +1,14 @@
 # 🚀 ESP32 IMU micro-ROS Node
 
-ESP32 기반 IMU 센서 노드로, micro-ROS를 통해 ROS 2와 통신합니다.  
-ROBOTIS 칼리브레이션 알고리즘과 Madgwick 필터를 적용하여 **정확하고 안정적인 IMU 데이터**를 제공합니다.
+ESP32 기반 IMU 센서 노드로, micro-ROS를 통해 ROS 2와 통신함.  
+ROBOTIS 칼리브레이션 알고리즘과 Madgwick 필터를 적용하여 **정확하고 안정적인 IMU 데이터**를 제공함.
 
 ---
 
 ## 🌟 소개
 
 이 프로젝트는 **ESP32 마이크로컨트롤러**와 **MPU9250/MPU6500 IMU 센서**를 사용하여  
-고정밀 관성 측정 데이터를 **micro-ROS를 이용해 ROS 2 시스템에 제공하는 esp32코드**입니다.
+고정밀 관성 측정 데이터를 **micro-ROS를 이용해 ROS 2 시스템에 제공하는 esp32코드** 임.
 
 ### 주요 특징
 
@@ -78,45 +78,53 @@ ROBOTIS 칼리브레이션 알고리즘과 Madgwick 필터를 적용하여 **정
 ```
 
 ---
+## 📦 Dependencies
 
-### 📦 Dependencies
+### ✅ Arduino IDE
 
-Arduino IDE: 라이브러리 매니저에서 MPU9250_asukiaaa (1.5.13) 설치, <br>
-             라이브러리 매니저에서 add zip file 을 통해 micro ROS arduino 라이브러리 설치. <br>
-             https://github.com/micro-ROS/micro_ros_arduino/releases
+1. **MPU9250_asukiaaa 라이브러리 설치**  
+   - Arduino IDE → **라이브러리 매니저** 열기  
+   - `MPU9250_asukiaaa` 검색 → **버전 1.5.13** 설치
 
-Micro ROS agnet 설치 (**호스트PC**) : 
-``` bash
-# Source the ROS 2 installation
+2. **micro-ROS Arduino 라이브러리 설치**  
+   - [micro_ros_arduino (v2.0.7-humble)](https://github.com/micro-ROS/micro_ros_arduino/releases) 릴리즈 페이지에서 ZIP 다운로드  
+   - Arduino IDE → `스케치 > 라이브러리 포함하기 > .ZIP 라이브러리 추가` 클릭  
+   - 다운로드한 ZIP 파일 선택
+
+3. **micro-ROS Agent 설치 (**호스트 PC**)**
+
+```bash
+# ROS 2 환경 설정
 source /opt/ros/$ROS_DISTRO/setup.bash
 
-# Create a workspace and download the micro-ROS tools
-mkdir microros_ws
-cd microros_ws
+# 워크스페이스 생성 및 micro-ROS 도구 다운로드
+mkdir -p ~/microros_ws/src
+cd ~/microros_ws
 git clone -b $ROS_DISTRO https://github.com/micro-ROS/micro_ros_setup.git src/micro_ros_setup
 
-# Update dependencies using rosdep
+# 의존성 설치
 sudo apt update && rosdep update
 rosdep install --from-paths src --ignore-src -y
 
-# Build micro-ROS tools and source them
+# 빌드 및 환경 설정
 colcon build
 source install/local_setup.bash
 
-# Download micro-ROS-Agent packages
+# micro-ROS Agent 패키지 설치
 ros2 run micro_ros_setup create_agent_ws.sh
 
-# Build step
+# Agent 빌드
 ros2 run micro_ros_setup build_agent.sh
 source install/local_setup.bash
 ```
+
 ---
 
 ## ✅ 실행 방법
 
 ### 0. 회로 구성
 
-아래 표를 참고하여 **ESP32와 IMU(MPU9250/MPU6500)**를 연결하세요.
+아래 표를 참고하여 **ESP32와 IMU(MPU9250/MPU6500)**를 연결.
 
 | ESP32 핀 | IMU 핀 (MPU9250/6500) |
 |----------|------------------------|
@@ -126,21 +134,21 @@ source install/local_setup.bash
 | GND      | GND                    |
 | 3.3V     | VCC                    |
 
-> 🔧 참고: ADO를 GND에 연결하면 IMU I2C 주소는 `0x68`이 됩니다.
+> 🔧 참고: ADO를 GND에 연결하면 IMU I2C 주소는 `0x68`이 됨.
 
 ---
 
 ### 1. Arduino IDE로 펌웨어 업로드
 
-- PlatformIO 또는 Arduino IDE에서 예제 코드를 열고,
+- Arduino IDE에 레포지토리 코드를 넣고,
 - ESP32 Dev Module 보드를 선택한 후,
-- COM 포트를 설정하고 펌웨어를 업로드하세요.
+- 포트를 설정하고 펌웨어를 업로드.
 
 ---
 
 ### 2. micro-ROS 에이전트 실행
 
-Linux PC에서 다음 명령어로 micro-ROS serial 에이전트를 실행하세요:
+Linux PC(ROS2 HUMBLE)에서 다음 명령어로 micro-ROS serial 에이전트를 실행:
 
 ```bash
 sudo chmod 666 /dev/ttyUSB0
