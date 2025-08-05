@@ -110,7 +110,6 @@ source install/local_setup.bash
 ```
 ---
 
-### 실행방법
 ## ✅ 실행 방법
 
 ### 0. 회로 구성
