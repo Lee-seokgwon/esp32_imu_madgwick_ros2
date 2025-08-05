@@ -82,7 +82,8 @@ ROBOTIS 칼리브레이션 알고리즘과 Madgwick 필터를 적용하여 **정
 ### 📦 Dependencies
 
 Arduino IDE: 라이브러리 매니저에서 MPU9250_asukiaaa (1.5.13) 설치, <br>
-             라이브러리 매니저에서 add zip file 을 통해 micro ROS arduino 라이브러리 설치 (레포에 zip파일 포함).
+             라이브러리 매니저에서 add zip file 을 통해 micro ROS arduino 라이브러리 설치. <br>
+             https://github.com/micro-ROS/micro_ros_arduino/releases
 
 Micro ROS agnet 설치 (**호스트PC**) : 
 ``` bash
