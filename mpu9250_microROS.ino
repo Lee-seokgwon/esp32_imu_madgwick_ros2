@@ -8,6 +8,19 @@
 #include <sensor_msgs/msg/imu.h>
 #include <MPU9250_asukiaaa.h>
 
+// ROBOTIS 칼리브레이션 상수들
+#define MPU_CALI_COUNT 512
+#define ROLL  0
+#define PITCH 1
+#define YAW   2
+
+// 칼리브레이션 변수들 (ROBOTIS 스타일)
+int16_t gyroADC[3], accADC[3];
+int16_t gyroZero[3] = {0, 0, 0};
+int16_t accZero[3] = {0, 0, 0};
+uint16_t calibratingG = MPU_CALI_COUNT;
+uint16_t calibratingA = MPU_CALI_COUNT;
+
 // Madgwick filter
 class MadgwickFilter {
 private:
@@ -135,11 +148,12 @@ rcl_node_t node;
 MPU9250_asukiaaa mySensor;
 MadgwickFilter filter;
 
-// 센서 데이터 캐시 (여러 번 읽기 방지)
+// 센서 데이터 캐시 (ROBOTIS 칼리브레이션 적용 후 값)
 struct SensorData {
-    float aX, aY, aZ;
-    float gX, gY, gZ;
+    float aX, aY, aZ;  // 칼리브레이션 적용 후 가속도 (g)
+    float gX, gY, gZ;  // 칼리브레이션 적용 후 자이로 (deg/s)
     bool valid;
+    bool calibrated;   // 칼리브레이션 완료 여부
 } sensorData;
 
 // Constants
@@ -158,18 +172,116 @@ void error_loop() {
     }
 }
 
+// ROBOTIS 자이로 칼리브레이션 (원본 수정)
+void gyro_common() {
+    static int16_t previousGyroADC[3];
+    static int32_t g[3];
+    uint8_t axis, tilt = 0;
+
+    if (calibratingG > 0) {
+        for (axis = 0; axis < 3; axis++) {
+            if (calibratingG == MPU_CALI_COUNT) {
+                g[axis] = 0;
+                previousGyroADC[axis] = gyroADC[axis];
+            }
+            if (calibratingG % 10 == 0) {
+                previousGyroADC[axis] = gyroADC[axis];
+            }
+            g[axis] += gyroADC[axis];
+            gyroZero[axis] = g[axis] >> 9; // 512로 나누기 (2^9 = 512)
+
+            if (calibratingG == 1) {
+                Serial.print("Gyro calibration complete! Bias: [");
+                Serial.print(gyroZero[0]); Serial.print(", ");
+                Serial.print(gyroZero[1]); Serial.print(", ");
+                Serial.print(gyroZero[2]); Serial.println("]");
+            }
+        }
+
+        if (tilt) {
+            calibratingG = 1000;
+        } else {
+            calibratingG--;
+        }
+        return;
+    }
+
+    // 칼리브레이션 완료 후 바이어스 제거
+    for (axis = 0; axis < 3; axis++) {
+        gyroADC[axis] -= gyroZero[axis];
+        previousGyroADC[axis] = gyroADC[axis];
+    }
+}
+
+// ROBOTIS 가속도 칼리브레이션 (원본 수정)
+void acc_common() {
+    static int32_t a[3];
+
+    if (calibratingA > 0) {
+        calibratingA--;
+        for (uint8_t axis = 0; axis < 3; axis++) {
+            if (calibratingA == (MPU_CALI_COUNT - 1)) a[axis] = 0;
+            a[axis] += accADC[axis];
+            accZero[axis] = a[axis] >> 9; // 512로 나누기
+        }
+        if (calibratingA == 0) {
+            accZero[YAW] = 0; // Z축 중력 오프셋은 제거하지 않음
+            Serial.print("Acc calibration complete! Bias: [");
+            Serial.print(accZero[0]); Serial.print(", ");
+            Serial.print(accZero[1]); Serial.print(", ");
+            Serial.print(accZero[2]); Serial.println("]");
+        }
+    }
+
+    // 칼리브레이션 적용
+    accADC[ROLL]  -= accZero[ROLL];
+    accADC[PITCH] -= accZero[PITCH];
+    accADC[YAW]   -= accZero[YAW];
+}
+
+// 센서 데이터 읽기 및 ROBOTIS 칼리브레이션 적용
 bool readSensorData() {
     if (mySensor.accelUpdate() != 0 || mySensor.gyroUpdate() != 0) {
         sensorData.valid = false;
         return false;
     }
     
-    sensorData.aX = mySensor.accelX();
-    sensorData.aY = mySensor.accelY();
-    sensorData.aZ = mySensor.accelZ();
-    sensorData.gX = mySensor.gyroX();
-    sensorData.gY = mySensor.gyroY();
-    sensorData.gZ = mySensor.gyroZ();
+    // Raw 센서 데이터를 ADC 배열에 저장 (스케일링 적용)
+    // MPU9250 라이브러리는 이미 물리 단위로 변환된 값을 제공하므로
+    // ADC 형태로 변환해서 ROBOTIS 로직 적용
+    float raw_gX = mySensor.gyroX();
+    float raw_gY = mySensor.gyroY();
+    float raw_gZ = mySensor.gyroZ();
+    float raw_aX = mySensor.accelX();
+    float raw_aY = mySensor.accelY();
+    float raw_aZ = mySensor.accelZ();
+    
+    // float을 int16_t로 변환 (소수점 정밀도 유지를 위해 스케일링 후 캐스팅)
+    // ROBOTIS imu 오차보정 로직이 int를 받음
+    gyroADC[ROLL]  = (int16_t)(raw_gX * 100);  // 0.01 deg/s 단위
+    gyroADC[PITCH] = (int16_t)(raw_gY * 100);
+    gyroADC[YAW]   = (int16_t)(raw_gZ * 100);
+    
+    accADC[ROLL]  = (int16_t)(raw_aX * 1000);  // 0.001g 단위
+    accADC[PITCH] = (int16_t)(raw_aY * 1000);
+    accADC[YAW]   = (int16_t)(raw_aZ * 1000);
+    
+    // ROBOTIS 칼리브레이션 적용
+    // 주기적으로 호출되면서 점점 캘리브레이션이 완료됨
+    gyro_common();
+    acc_common();
+    
+    // 칼리브레이션 적용된 값을 다시 float으로 변환
+    sensorData.gX = gyroADC[ROLL] / 100.0f;   // deg/s
+    sensorData.gY = gyroADC[PITCH] / 100.0f;
+    sensorData.gZ = gyroADC[YAW] / 100.0f;
+    
+    sensorData.aX = accADC[ROLL] / 1000.0f;   // g
+    sensorData.aY = accADC[PITCH] / 1000.0f;
+    sensorData.aZ = accADC[YAW] / 1000.0f;
+    
+    // 칼리브레이션 완료 여부 확인
+    sensorData.calibrated = (calibratingG == 0 && calibratingA == 0);
     sensorData.valid = true;
     
     return true;
@@ -178,17 +290,21 @@ bool readSensorData() {
 void updateIMU() {
     if (!readSensorData()) return;
 
-    filter.updateIMU(sensorData.gX, sensorData.gY, sensorData.gZ, 
-                     sensorData.aX, sensorData.aY, sensorData.aZ);
+    // 칼리브레이션 완료된 경우에만 필터 업데이트
+    if (sensorData.calibrated) {
+        filter.updateIMU(sensorData.gX, sensorData.gY, sensorData.gZ, 
+                         sensorData.aX, sensorData.aY, sensorData.aZ);
+    }
 }
 
 // 저주파수로 ROS 메시지 퍼블리시
 void publishIMU() {
-    unsigned long start_time = micros();
-    
     if (!sensorData.valid) return;
     
-    // IMU 메시지 채우기 (캐시된 데이터 사용)
+    // 칼리브레이션 중에는 퍼블리시하지 않음
+    if (!sensorData.calibrated) return;
+    
+    // IMU 메시지 채우기 (칼리브레이션 적용된 데이터 사용)
     imu_msg.linear_acceleration.x = sensorData.aX * GRAVITY;
     imu_msg.linear_acceleration.y = sensorData.aY * GRAVITY;
     imu_msg.linear_acceleration.z = sensorData.aZ * GRAVITY;
@@ -256,13 +372,14 @@ void setup() {
     memcpy(imu_msg.orientation_covariance, orientation_cov, sizeof(orientation_cov));
     memcpy(imu_msg.angular_velocity_covariance, angular_vel_cov, sizeof(angular_vel_cov));
     memcpy(imu_msg.linear_acceleration_covariance, linear_acc_cov, sizeof(linear_acc_cov));
+    
+    Serial.println("Setup complete! Starting calibration...");
 }
 
-// IMU -> ASAP , Micro_ROS(bottle neck) -> slow down enough
-// Asyncronous task -> imu speed up!
 void loop() {
     static unsigned long last_publish = 0;
     static unsigned long last_imu_update = 0;
+    static unsigned long last_calibration_print = 0;
     unsigned long current_time = micros();
     
     // 고주파수 IMU 업데이트 (가능한 한 자주)
@@ -271,8 +388,17 @@ void loop() {
         last_imu_update = current_time;
     }
     
-    // 저주파수 퍼블리시 (100Hz)
-    if (current_time - last_publish >= 10000) { // 10ms = 100Hz
+    // 칼리브레이션 진행 상황 출력
+    if (!sensorData.calibrated && current_time - last_calibration_print >= 1000000) { // 1초마다
+        Serial.print("Calibrating... Gyro: ");
+        Serial.print(calibratingG);
+        Serial.print(", Acc: ");
+        Serial.println(calibratingA);
+        last_calibration_print = current_time;
+    }
+    
+    // 저주파수 퍼블리시 (100Hz) - 칼리브레이션 완료 후에만
+    if (sensorData.calibrated && current_time - last_publish >= 10000) { // 10ms = 100Hz
         publishIMU();
         last_publish = current_time;
     }
