@@ -143,6 +143,7 @@ rclc_executor_t executor;
 rclc_support_t support;
 rcl_allocator_t allocator;
 rcl_node_t node;
+rcl_init_options_t init_options;
 
 // IMU sensor and filter objects
 MPU9250_asukiaaa mySensor;
@@ -352,9 +353,16 @@ void setup() {
     filter.begin(IMU_PUBLISH_FREQUENCY);
     
     // micro-ROS 초기화
+    // micro-ROS 초기화 (도메인 ID 30)
     allocator = rcl_get_default_allocator();
-    RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
-    RCCHECK(rclc_node_init_default(&node, "esp32_imu_node", "", &support));   
+
+    // 도메인 ID 30 설정
+    init_options = rcl_get_zero_initialized_init_options();
+    RCCHECK(rcl_init_options_init(&init_options, allocator));
+    RCCHECK(rcl_init_options_set_domain_id(&init_options, 30));
+    RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
+
+    RCCHECK(rclc_node_init_default(&node, "esp32_imu_node", "", &support));
     RCCHECK(rclc_publisher_init_default(
         &publisher,
         &node,
